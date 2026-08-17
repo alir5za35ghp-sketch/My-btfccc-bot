@@ -1,13 +1,6 @@
 {
-  "balance": 100.0,
-  "open_positions": [
-    {
-      "direction": "long",
-      "entry": 64362.645000000004,
-      "stop": 64321.393215000004,
-      "target": 64445.148570000005
-    }
-  ],
+  "balance": 99.0,
+  "open_positions": [],
   "pending_setups": [],
-  "last_candle_time": "2026-08-17T21:30:00+00:00"
+  "last_candle_time": "2026-08-17T22:30:00+00:00"
 }
