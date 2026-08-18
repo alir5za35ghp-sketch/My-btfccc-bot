@@ -5,10 +5,13 @@ Designed to be triggered every 15 minutes by a GitHub Actions cron schedule.
 Each run:
   1. Loads saved state (open positions, pending setups, balance) from state.json
   2. Fetches latest candles (public data, no API key needed)
-  3. Manages open positions, checks pending setups, looks for new signals
-  4. Appends any events to forward_test_log.csv
-  5. Saves updated state back to state.json
-  6. Exits (the GitHub Actions workflow commits the updated files back to the repo)
+  3. Walks forward through EVERY newly closed candle since the last run
+     (not just the most recent one) so no signal is skipped if a run is
+     delayed or missed.
+  4. Manages open positions, checks pending setups, looks for new signals
+  5. Appends any events to forward_test_log.csv
+  6. Saves updated state back to state.json
+  7. Exits (the GitHub Actions workflow commits the updated files back to the repo)
 
 Requires: pip install ccxt pandas numpy
 """
@@ -110,8 +113,11 @@ def prev_swing_idx(df, i, kind):
 
 
 # ================= Strategy logic =================
-def detect_new_bos_setup(df):
-    i = len(df) - 2
+# NOTE: these now take an explicit candle index `i` instead of always
+# assuming "the latest closed candle". This lets main() walk forward
+# through every candle that closed since the last run, in order,
+# instead of only ever looking at the single newest one.
+def detect_new_bos_setup(df, i):
     if i < 60:
         return None
     H, L, C = df['high'].values, df['low'].values, df['close'].values
@@ -129,8 +135,7 @@ def detect_new_bos_setup(df):
             return dict(direction='short', gtop=gtop, gbottom=gbottom, bos_time=df['dt'].iloc[i].isoformat())
     return None
 
-def check_pending_retrace(df, setup):
-    i = len(df) - 2
+def check_pending_retrace(df, setup, i):
     row = df.iloc[i]
     H, L = df['high'].values, df['low'].values
     bos_time = pd.Timestamp(setup['bos_time'])
@@ -162,56 +167,43 @@ def check_pending_retrace(df, setup):
 
 
 # ================= Position management =================
-def manage_open_positions(state, df):
-    """Retroactively check every CLOSED candle since the last time we checked --
-    not just the most recent one. This makes the recorded win rate accurate
-    regardless of how much delay there was between GitHub Actions runs (the
-    scheduler is not real-time and can lag 15-60+ minutes).
-    Uses TIMESTAMPS (not positional index) since the fetched window shifts
-    forward every run -- a stored positional index would go stale."""
-    N = len(df)
-    H, L = df['high'].values, df['low'].values
-    last_checked_time = state.get('last_position_check_time')
-
-    if last_checked_time is None:
-        start = 0
-    else:
-        last_checked_ts = pd.Timestamp(last_checked_time)
-        # first index strictly after the last one we already checked
-        mask = df['dt'] > last_checked_ts
-        start = mask.idxmax() if mask.any() else N - 1
-
-    end = N - 1  # don't evaluate the still-forming last candle
-
-    for i in range(start, end):
-        still_open = []
-        for d in state['open_positions']:
-            hit_stop = (L[i] <= d['stop']) if d['direction']=='long' else (H[i] >= d['stop'])
-            hit_target = (H[i] >= d['target']) if d['direction']=='long' else (L[i] <= d['target'])
-            if hit_stop:
-                r = -1.0
-                state['balance'] *= (1 + RISK_PCT*r)
-                log_row('EXIT_STOP', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
-                print(f"STOP HIT ({d['direction']}) [retroactive @ {df['dt'].iloc[i]}]. r={r}. Balance=${state['balance']:.2f}")
-            elif hit_target:
-                r = RR
-                state['balance'] *= (1 + RISK_PCT*r)
-                log_row('EXIT_TARGET', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
-                print(f"TARGET HIT ({d['direction']}) [retroactive @ {df['dt'].iloc[i]}]. r={r}. Balance=${state['balance']:.2f}")
-            else:
-                still_open.append(d)
-        state['open_positions'] = still_open
-
-    if end > start:
-        state['last_position_check_time'] = df['dt'].iloc[end-1].isoformat()
-    elif last_checked_time is None and N > 1:
-        state['last_position_check_time'] = df['dt'].iloc[0].isoformat()
+def manage_open_positions(state, high, low):
+    still_open = []
+    for d in state['open_positions']:
+        hit_stop = (low <= d['stop']) if d['direction']=='long' else (high >= d['stop'])
+        hit_target = (high >= d['target']) if d['direction']=='long' else (low <= d['target'])
+        if hit_stop:
+            r = -1.0
+            state['balance'] *= (1 + RISK_PCT*r)
+            log_row('EXIT_STOP', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
+            print(f"STOP HIT ({d['direction']}). r={r}. Balance=${state['balance']:.2f}")
+        elif hit_target:
+            r = RR
+            state['balance'] *= (1 + RISK_PCT*r)
+            log_row('EXIT_TARGET', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
+            print(f"TARGET HIT ({d['direction']}). r={r}. Balance=${state['balance']:.2f}")
+        else:
+            still_open.append(d)
+    state['open_positions'] = still_open
 
 def open_new_position(state, signal):
     state['open_positions'].append(signal)
     log_row('ENTRY', signal['direction'], signal['entry'], signal['stop'], signal['target'], '', round(state['balance'],2))
     print(f"NEW {signal['direction'].upper()} entry={signal['entry']:.1f} stop={signal['stop']:.1f} "
           f"target={signal['target']:.1f}  ({len(state['open_positions'])} position(s) now open)")
+
+
+# ================= Helpers for walking through missed candles =================
+def find_index_of_time(df, iso_time):
+    """Return the row index in df whose 'dt' matches iso_time, or None if not found
+    (e.g. it's older than the 200-candle window we fetched)."""
+    if iso_time is None:
+        return None
+    target = pd.Timestamp(iso_time)
+    matches = df.index[df['dt'] == target]
+    if len(matches) == 0:
+        return None
+    return matches[0]
 
 
 # ================= Main (single run) =================
@@ -224,31 +216,60 @@ def main():
 
     df = fetch_candles(limit=200)
     df = compute_indicators(df)
-    latest_closed_time = df['dt'].iloc[-2].isoformat()
 
-    manage_open_positions(state, df)
+    latest_closed_idx = len(df) - 2  # last fully-closed candle in this fetch
 
-    if latest_closed_time != state.get('last_candle_time'):
-        state['last_candle_time'] = latest_closed_time
+    # Always check open positions against the *currently forming* candle's
+    # high/low, so stop/target hits are caught in real time regardless of
+    # whether a new candle has closed yet.
+    last_row = df.iloc[-1]
+    manage_open_positions(state, last_row['high'], last_row['low'])
 
-        still_pending = []
-        for setup in state['pending_setups']:
-            result = check_pending_retrace(df, setup)
-            if result == 'expired':
-                print(f"Pending {setup['direction']} setup expired.")
-            elif isinstance(result, dict):
-                open_new_position(state, result)
-            else:
-                still_pending.append(setup)
-        state['pending_setups'] = still_pending
+    last_idx = find_index_of_time(df, state.get('last_candle_time'))
 
-        new_setup = detect_new_bos_setup(df)
-        if new_setup:
-            state['pending_setups'].append(new_setup)
-            print(f"New {new_setup['direction']} BOS+FVG detected "
-                  f"({len(state['pending_setups'])} setup(s) now pending).")
+    if last_idx is None:
+        # First run ever, or the last processed candle fell outside our
+        # 200-candle window (a very long gap) -- fall back to just the
+        # newest closed candle so we don't reprocess ancient history.
+        start_idx = latest_closed_idx
     else:
+        start_idx = last_idx + 1
+
+    if start_idx > latest_closed_idx:
         print("No new closed candle since last run -- nothing to do.")
+    else:
+        skipped = latest_closed_idx - start_idx
+        if skipped > 0:
+            print(f"Catching up on {skipped + 1} closed candle(s) missed since last run.")
+
+        # Walk forward through every newly closed candle IN ORDER, so no
+        # BOS/FVG setup or retrace trigger in between is ever skipped.
+        for i in range(start_idx, latest_closed_idx + 1):
+            row = df.iloc[i]
+
+            # Also check open positions against this historical candle's
+            # high/low (more accurate than only checking the live candle
+            # when catching up on several missed candles at once).
+            manage_open_positions(state, row['high'], row['low'])
+
+            still_pending = []
+            for setup in state['pending_setups']:
+                result = check_pending_retrace(df, setup, i)
+                if result == 'expired':
+                    print(f"Pending {setup['direction']} setup expired.")
+                elif isinstance(result, dict):
+                    open_new_position(state, result)
+                else:
+                    still_pending.append(setup)
+            state['pending_setups'] = still_pending
+
+            new_setup = detect_new_bos_setup(df, i)
+            if new_setup:
+                state['pending_setups'].append(new_setup)
+                print(f"New {new_setup['direction']} BOS+FVG detected "
+                      f"({len(state['pending_setups'])} setup(s) now pending).")
+
+        state['last_candle_time'] = df['dt'].iloc[latest_closed_idx].isoformat()
 
     save_state(state)
     print(f"Run complete. Balance=${state['balance']:.2f}, "
@@ -256,4 +277,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
