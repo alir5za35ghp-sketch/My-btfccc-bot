@@ -162,24 +162,50 @@ def check_pending_retrace(df, setup):
 
 
 # ================= Position management =================
-def manage_open_positions(state, high, low):
-    still_open = []
-    for d in state['open_positions']:
-        hit_stop = (low <= d['stop']) if d['direction']=='long' else (high >= d['stop'])
-        hit_target = (high >= d['target']) if d['direction']=='long' else (low <= d['target'])
-        if hit_stop:
-            r = -1.0
-            state['balance'] *= (1 + RISK_PCT*r)
-            log_row('EXIT_STOP', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
-            print(f"STOP HIT ({d['direction']}). r={r}. Balance=${state['balance']:.2f}")
-        elif hit_target:
-            r = RR
-            state['balance'] *= (1 + RISK_PCT*r)
-            log_row('EXIT_TARGET', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
-            print(f"TARGET HIT ({d['direction']}). r={r}. Balance=${state['balance']:.2f}")
-        else:
-            still_open.append(d)
-    state['open_positions'] = still_open
+def manage_open_positions(state, df):
+    """Retroactively check every CLOSED candle since the last time we checked --
+    not just the most recent one. This makes the recorded win rate accurate
+    regardless of how much delay there was between GitHub Actions runs (the
+    scheduler is not real-time and can lag 15-60+ minutes).
+    Uses TIMESTAMPS (not positional index) since the fetched window shifts
+    forward every run -- a stored positional index would go stale."""
+    N = len(df)
+    H, L = df['high'].values, df['low'].values
+    last_checked_time = state.get('last_position_check_time')
+
+    if last_checked_time is None:
+        start = 0
+    else:
+        last_checked_ts = pd.Timestamp(last_checked_time)
+        # first index strictly after the last one we already checked
+        mask = df['dt'] > last_checked_ts
+        start = mask.idxmax() if mask.any() else N - 1
+
+    end = N - 1  # don't evaluate the still-forming last candle
+
+    for i in range(start, end):
+        still_open = []
+        for d in state['open_positions']:
+            hit_stop = (L[i] <= d['stop']) if d['direction']=='long' else (H[i] >= d['stop'])
+            hit_target = (H[i] >= d['target']) if d['direction']=='long' else (L[i] <= d['target'])
+            if hit_stop:
+                r = -1.0
+                state['balance'] *= (1 + RISK_PCT*r)
+                log_row('EXIT_STOP', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
+                print(f"STOP HIT ({d['direction']}) [retroactive @ {df['dt'].iloc[i]}]. r={r}. Balance=${state['balance']:.2f}")
+            elif hit_target:
+                r = RR
+                state['balance'] *= (1 + RISK_PCT*r)
+                log_row('EXIT_TARGET', d['direction'], d['entry'], d['stop'], d['target'], r, round(state['balance'],2))
+                print(f"TARGET HIT ({d['direction']}) [retroactive @ {df['dt'].iloc[i]}]. r={r}. Balance=${state['balance']:.2f}")
+            else:
+                still_open.append(d)
+        state['open_positions'] = still_open
+
+    if end > start:
+        state['last_position_check_time'] = df['dt'].iloc[end-1].isoformat()
+    elif last_checked_time is None and N > 1:
+        state['last_position_check_time'] = df['dt'].iloc[0].isoformat()
 
 def open_new_position(state, signal):
     state['open_positions'].append(signal)
@@ -200,8 +226,7 @@ def main():
     df = compute_indicators(df)
     latest_closed_time = df['dt'].iloc[-2].isoformat()
 
-    last_row = df.iloc[-1]
-    manage_open_positions(state, last_row['high'], last_row['low'])
+    manage_open_positions(state, df)
 
     if latest_closed_time != state.get('last_candle_time'):
         state['last_candle_time'] = latest_closed_time
@@ -231,3 +256,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+        
