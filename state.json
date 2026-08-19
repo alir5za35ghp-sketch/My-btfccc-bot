@@ -1,32 +1,7 @@
 {
   "balance": 104.99698581288001,
   "open_positions": [],
-  "pending_setups": [
-    {
-      "direction": "long",
-      "gtop": 65323.22,
-      "gbottom": 65188.8,
-      "bos_time": "2026-08-19T14:30:00+00:00"
-    },
-    {
-      "direction": "long",
-      "gtop": 65323.22,
-      "gbottom": 65188.8,
-      "bos_time": "2026-08-19T14:45:00+00:00"
-    },
-    {
-      "direction": "long",
-      "gtop": 65890.15,
-      "gbottom": 65517.25,
-      "bos_time": "2026-08-19T15:00:00+00:00"
-    },
-    {
-      "direction": "long",
-      "gtop": 66585.42,
-      "gbottom": 65977.17,
-      "bos_time": "2026-08-19T15:15:00+00:00"
-    }
-  ],
+  "pending_setups": [],
   "last_processed_time": "2026-08-19T16:45:00+00:00",
-  "last_candle_time": "2026-08-19T19:30:00+00:00"
+  "last_candle_time": "2026-08-19T20:30:00+00:00"
 }
