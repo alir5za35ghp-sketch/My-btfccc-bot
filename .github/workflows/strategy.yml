@@ -7,6 +7,17 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch: {}   # lets you also trigger it manually from the Actions tab
 
+# Prevents overlapping runs. If a new run (scheduled or manual) starts while a
+# previous one is still in progress -- or its state.json commit hasn't landed
+# in the repo yet -- the new run WAITS instead of racing it. Without this,
+# two runs can both read the same stale state.json, both independently
+# "catch up" on the same range of candles, and both commit -- producing
+# duplicate/tripled trade entries in the log (exactly what happened before
+# this was added).
+concurrency:
+  group: forward-test-bot
+  cancel-in-progress: false
+
 # Needed so the workflow is allowed to commit the updated state/log files back
 permissions:
   contents: write
@@ -17,6 +28,10 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          # Always start from the LATEST commit on the branch, in case another
+          # run just pushed a newer state.json moments ago.
+          ref: main
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -35,4 +50,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git add state.json forward_test_log.csv
           git diff --quiet --cached || git commit -m "Bot run: $(date -u +'%Y-%m-%d %H:%M UTC')"
+          # Pull-rebase before pushing in case something else landed a commit
+          # in the tiny window since checkout, then push.
+          git pull --rebase origin main
           git push
