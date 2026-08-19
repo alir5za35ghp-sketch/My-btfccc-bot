@@ -1,19 +1,21 @@
 """
-Forward-Test Bot -- GitHub Actions version (v2: fully retroactive / catch-up loop)
+Forward-Test Bot -- GitHub Actions version (v3: adds Filter C + fully retroactive)
 ====================================================================================
-Fixes a class of bugs from v1: previously, position management, pending-setup
-checks, and new-signal detection each only looked at the SINGLE most recently
-closed candle. If GitHub Actions ran late (which it does, sometimes by hours),
-everything that happened in between was silently skipped -- causing far fewer
-trades than the backtest predicted, and occasionally an ENTRY and its EXIT
-being logged milliseconds apart (because the bot only "noticed" a setup long
-after it had already played out).
+Strategy: BOS (market structure break) + FVG (fair value gap) retracement entry,
+filtered by (a) Ichimoku trend confluence and (b) FVG size > 0.3x ATR(14)
+("Filter C" -- only trade "significant" imbalances, not noise-sized gaps).
+Backtested on 7 months of 15m BTCUSDT: n=916, win_rate=61.0%, PF=3.13.
 
-This version processes every new closed candle since the last run, ONE AT A
-TIME, IN CHRONOLOGICAL ORDER, running position management -> pending-setup
-checks -> new-signal detection at each one -- exactly mirroring the single
-sequential loop used in the validated backtest. No candle is ever skipped
-regardless of how long the gap between runs is.
+v3 change: Filter C was missing from earlier bot versions (v1/v2 only had
+FVG+Ichimoku, matching the 52.5%-win-rate baseline, NOT the 61%-win-rate
+final strategy). This version adds it back in.
+
+Also fixes a class of bugs from v1: previously, position management,
+pending-setup checks, and new-signal detection each only looked at the
+SINGLE most recently closed candle. If GitHub Actions ran late (which it
+does, sometimes by hours), everything in between was silently skipped.
+This version processes every new closed candle since the last run, ONE AT
+A TIME, IN CHRONOLOGICAL ORDER -- exactly mirroring the validated backtest.
 
 Requires: pip install ccxt pandas numpy
 """
@@ -32,6 +34,7 @@ TIMEFRAME = "15m"
 RISK_PCT = 0.01
 RR = 2.0
 MAX_WAIT_BARS = 20
+FVG_ATR_MULT = 0.3   # Filter C: FVG size must exceed this multiple of ATR(14)
 
 STATE_FILE = "state.json"
 LOG_FILE = "forward_test_log.csv"
@@ -84,6 +87,13 @@ def compute_indicators(df):
     K = 2
     df['swing_high'] = df['high'] == df['high'].rolling(2*K+1, center=True).max()
     df['swing_low']  = df['low']  == df['low'].rolling(2*K+1, center=True).min()
+    # ATR(14) -- used by Filter C (FVG-size filter)
+    tr = pd.concat([
+        high - low,
+        (high - close.shift(1)).abs(),
+        (low - close.shift(1)).abs()
+    ], axis=1).max(axis=1)
+    df['atr'] = tr.ewm(alpha=1/14, adjust=False).mean()
     return df
 
 def ichimoku_bullish(row):
@@ -192,22 +202,27 @@ def process_candle(df, i, state):
     # --- 3) detect a fresh BOS + FVG at this candle ---
     if i < 60:
         return
+    ATR = df['atr'].values
     psh = prev_swing_idx(df, i, 'high')
     if psh is not None and C[i] > H[psh]:
         fvg = find_last_fvg(df, max(psh, i-10), i+1, 'bullish')
         if fvg:
             _, gtop, gbottom = fvg
-            state['pending_setups'].append(dict(direction='long', gtop=gtop, gbottom=gbottom,
-                                                 bos_time=df['dt'].iloc[i].isoformat()))
-            print(f"[{ct}] New LONG BOS+FVG detected.")
+            # Filter C: only take FVGs that represent a "significant" imbalance
+            # relative to normal market volatility (ATR), not noise-sized gaps.
+            if not np.isnan(ATR[i]) and (gtop - gbottom) > FVG_ATR_MULT * ATR[i]:
+                state['pending_setups'].append(dict(direction='long', gtop=gtop, gbottom=gbottom,
+                                                     bos_time=df['dt'].iloc[i].isoformat()))
+                print(f"[{ct}] New LONG BOS+FVG detected (passed Filter C).")
     psl = prev_swing_idx(df, i, 'low')
     if psl is not None and C[i] < L[psl]:
         fvg = find_last_fvg(df, max(psl, i-10), i+1, 'bearish')
         if fvg:
             _, gtop, gbottom = fvg
-            state['pending_setups'].append(dict(direction='short', gtop=gtop, gbottom=gbottom,
-                                                 bos_time=df['dt'].iloc[i].isoformat()))
-            print(f"[{ct}] New SHORT BOS+FVG detected.")
+            if not np.isnan(ATR[i]) and (gtop - gbottom) > FVG_ATR_MULT * ATR[i]:
+                state['pending_setups'].append(dict(direction='short', gtop=gtop, gbottom=gbottom,
+                                                     bos_time=df['dt'].iloc[i].isoformat()))
+                print(f"[{ct}] New SHORT BOS+FVG detected (passed Filter C).")
 
 
 # ================= Main (single run, catches up on ALL missed candles) =================
