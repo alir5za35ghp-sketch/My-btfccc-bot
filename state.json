@@ -1,55 +1,7 @@
 {
-  "balance": 100.98,
+  "balance": 99.9702,
   "open_positions": [],
   "pending_setups": [
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T00:45:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T01:00:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T01:15:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T01:30:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T01:45:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T02:00:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T02:15:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 64724.81,
-      "gbottom": 64673.93,
-      "bos_time": "2026-08-19T02:30:00+00:00"
-    },
     {
       "direction": "short",
       "gtop": 64724.81,
@@ -57,6 +9,6 @@
       "bos_time": "2026-08-19T02:45:00+00:00"
     }
   ],
-  "last_candle_time": "2026-08-19T05:45:00+00:00",
+  "last_candle_time": "2026-08-19T07:45:00+00:00",
   "last_position_check_time": "2026-08-18T11:30:00+00:00"
 }
