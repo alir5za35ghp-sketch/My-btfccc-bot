@@ -13,7 +13,43 @@
       "gtop": 64818.59,
       "gbottom": 64515.2,
       "bos_time": "2026-08-19T13:45:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 64818.59,
+      "gbottom": 64515.2,
+      "bos_time": "2026-08-19T14:00:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 65323.22,
+      "gbottom": 65188.8,
+      "bos_time": "2026-08-19T14:15:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 65323.22,
+      "gbottom": 65188.8,
+      "bos_time": "2026-08-19T14:30:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 65323.22,
+      "gbottom": 65188.8,
+      "bos_time": "2026-08-19T14:45:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 65890.15,
+      "gbottom": 65517.25,
+      "bos_time": "2026-08-19T15:00:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 66585.42,
+      "gbottom": 65977.17,
+      "bos_time": "2026-08-19T15:15:00+00:00"
     }
   ],
-  "last_processed_time": "2026-08-19T13:45:00+00:00"
+  "last_processed_time": "2026-08-19T15:30:00+00:00"
 }
