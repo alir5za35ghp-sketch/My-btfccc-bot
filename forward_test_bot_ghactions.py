@@ -59,7 +59,31 @@ def init_log():
             w = csv.writer(f)
             w.writerow(['timestamp','event','direction','price','stop','target','r_result','balance'])
 
+_existing_log_keys = None  # cache of (timestamp, event, direction, price) tuples already in the log
+
+def _load_existing_log_keys():
+    global _existing_log_keys
+    keys = set()
+    if os.path.exists(LOG_FILE):
+        with open(LOG_FILE, 'r', newline='') as f:
+            reader = csv.reader(f)
+            next(reader, None)  # skip header
+            for row in reader:
+                if len(row) >= 4:
+                    keys.add((row[0], row[1], row[2], row[3]))
+    _existing_log_keys = keys
+
 def log_row(candle_time, event, direction='', price='', stop='', target='', r_result='', balance=''):
+    global _existing_log_keys
+    if _existing_log_keys is None:
+        _load_existing_log_keys()
+    key = (str(candle_time), event, direction, str(price))
+    if key in _existing_log_keys:
+        # Idempotency guard: this exact event was already logged (e.g. from a
+        # prior run that raced with this one). Skip writing a duplicate.
+        print(f"  (skipped duplicate log row: {key})")
+        return
+    _existing_log_keys.add(key)
     with open(LOG_FILE, 'a', newline='') as f:
         w = csv.writer(f)
         # Use the CANDLE's timestamp, not "now" -- so catch-up runs record events
