@@ -4,24 +4,6 @@
   "pending_setups": [
     {
       "direction": "long",
-      "gtop": 64818.59,
-      "gbottom": 64515.2,
-      "bos_time": "2026-08-19T13:45:00+00:00"
-    },
-    {
-      "direction": "long",
-      "gtop": 64818.59,
-      "gbottom": 64515.2,
-      "bos_time": "2026-08-19T14:00:00+00:00"
-    },
-    {
-      "direction": "long",
-      "gtop": 65323.22,
-      "gbottom": 65188.8,
-      "bos_time": "2026-08-19T14:15:00+00:00"
-    },
-    {
-      "direction": "long",
       "gtop": 65323.22,
       "gbottom": 65188.8,
       "bos_time": "2026-08-19T14:30:00+00:00"
@@ -46,5 +28,5 @@
     }
   ],
   "last_processed_time": "2026-08-19T16:45:00+00:00",
-  "last_candle_time": "2026-08-19T18:45:00+00:00"
+  "last_candle_time": "2026-08-19T19:30:00+00:00"
 }
