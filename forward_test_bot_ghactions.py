@@ -227,26 +227,47 @@ def process_candle(df, i, state):
     if i < 60:
         return
     ATR = df['atr'].values
+
+    def already_queued(direction, gtop, gbottom, tol=1e-6):
+        """Dedup guard: same gap (within tolerance) already pending in this direction."""
+        for s in state['pending_setups']:
+            if s['direction'] == direction and abs(s['gtop']-gtop) < tol and abs(s['gbottom']-gbottom) < tol:
+                return True
+        return False
+
     psh = prev_swing_idx(df, i, 'high')
-    if psh is not None and C[i] > H[psh]:
+    # Only fire on the actual breakout candle (previous close had NOT yet broken
+    # the swing) -- otherwise, since psh doesn't move until a new opposite swing
+    # forms, C[i] > H[psh] stays true for many subsequent candles and the same
+    # FVG gets re-queued over and over, producing duplicate trades.
+    fresh_break_up = psh is not None and C[i] > H[psh] and not (i > 0 and C[i-1] > H[psh])
+    if fresh_break_up:
         fvg = find_last_fvg(df, max(psh, i-10), i+1, 'bullish')
         if fvg:
             _, gtop, gbottom = fvg
             # Filter C: only take FVGs that represent a "significant" imbalance
             # relative to normal market volatility (ATR), not noise-sized gaps.
             if not np.isnan(ATR[i]) and (gtop - gbottom) > FVG_ATR_MULT * ATR[i]:
-                state['pending_setups'].append(dict(direction='long', gtop=gtop, gbottom=gbottom,
-                                                     bos_time=df['dt'].iloc[i].isoformat()))
-                print(f"[{ct}] New LONG BOS+FVG detected (passed Filter C).")
+                if not already_queued('long', gtop, gbottom):
+                    state['pending_setups'].append(dict(direction='long', gtop=gtop, gbottom=gbottom,
+                                                         bos_time=df['dt'].iloc[i].isoformat()))
+                    print(f"[{ct}] New LONG BOS+FVG detected (passed Filter C).")
+                else:
+                    print(f"[{ct}] LONG BOS+FVG matches an already-queued setup -- skipped (dedup).")
+
     psl = prev_swing_idx(df, i, 'low')
-    if psl is not None and C[i] < L[psl]:
+    fresh_break_down = psl is not None and C[i] < L[psl] and not (i > 0 and C[i-1] < L[psl])
+    if fresh_break_down:
         fvg = find_last_fvg(df, max(psl, i-10), i+1, 'bearish')
         if fvg:
             _, gtop, gbottom = fvg
             if not np.isnan(ATR[i]) and (gtop - gbottom) > FVG_ATR_MULT * ATR[i]:
-                state['pending_setups'].append(dict(direction='short', gtop=gtop, gbottom=gbottom,
-                                                     bos_time=df['dt'].iloc[i].isoformat()))
-                print(f"[{ct}] New SHORT BOS+FVG detected (passed Filter C).")
+                if not already_queued('short', gtop, gbottom):
+                    state['pending_setups'].append(dict(direction='short', gtop=gtop, gbottom=gbottom,
+                                                         bos_time=df['dt'].iloc[i].isoformat()))
+                    print(f"[{ct}] New SHORT BOS+FVG detected (passed Filter C).")
+                else:
+                    print(f"[{ct}] SHORT BOS+FVG matches an already-queued setup -- skipped (dedup).")
 
 
 # ================= Main (single run, catches up on ALL missed candles) =================
