@@ -1,5 +1,5 @@
 {
-  "balance": 107.09692552913762,
+  "balance": 105.99436053887665,
   "open_positions": [],
   "pending_setups": [
     {
@@ -7,8 +7,20 @@
       "gtop": 71790.4,
       "gbottom": 71715.14,
       "bos_time": "2026-08-20T15:00:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 71979.52,
+      "gbottom": 71824.15,
+      "bos_time": "2026-08-20T15:15:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 71979.52,
+      "gbottom": 71824.15,
+      "bos_time": "2026-08-20T15:30:00+00:00"
     }
   ],
-  "last_processed_time": "2026-08-19T16:45:00+00:00",
+  "last_processed_time": "2026-08-20T16:00:00+00:00",
   "last_candle_time": "2026-08-20T15:45:00+00:00"
 }
