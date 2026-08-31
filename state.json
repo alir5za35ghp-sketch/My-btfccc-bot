@@ -1,14 +1,14 @@
 {
   "balance": 112.44854370385931,
-  "open_positions": [],
-  "pending_setups": [
+  "open_positions": [
     {
       "direction": "long",
-      "gtop": 78304.2,
-      "gbottom": 78157.58,
-      "bos_time": "2026-08-31T08:45:00+00:00"
+      "entry": 78230.89,
+      "stop": 78118.50121,
+      "target": 78455.66758
     }
   ],
-  "last_processed_time": "2026-08-31T11:30:00+00:00",
+  "pending_setups": [],
+  "last_processed_time": "2026-08-31T11:45:00+00:00",
   "last_candle_time": "2026-08-20T15:45:00+00:00"
 }
