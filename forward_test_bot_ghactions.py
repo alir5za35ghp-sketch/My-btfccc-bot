@@ -1,22 +1,13 @@
 """
-Forward-Test Bot -- GitHub Actions version (v3: adds Filter C + fully retroactive)
-====================================================================================
-Strategy: BOS (market structure break) + FVG (fair value gap) retracement entry,
-filtered by (a) Ichimoku trend confluence and (b) FVG size > 0.3x ATR(14)
-("Filter C" -- only trade "significant" imbalances, not noise-sized gaps).
-Backtested on 7 months of 15m BTCUSDT: n=916, win_rate=61.0%, PF=3.13.
-
-v3 change: Filter C was missing from earlier bot versions (v1/v2 only had
-FVG+Ichimoku, matching the 52.5%-win-rate baseline, NOT the 61%-win-rate
-final strategy). This version adds it back in.
-
-Also fixes a class of bugs from v1: previously, position management,
-pending-setup checks, and new-signal detection each only looked at the
-SINGLE most recently closed candle. If GitHub Actions ran late (which it
-does, sometimes by hours), everything in between was silently skipped.
-This version processes every new closed candle since the last run, ONE AT
-A TIME, IN CHRONOLOGICAL ORDER -- exactly mirroring the validated backtest.
-
+Forward-Test Bot -- COMPLETE FINAL VERSION (rebuilt after environment reset)
+================================================================================
+All fixes included:
+  1. Retroactive catch-up: processes EVERY closed candle since the last run.
+  2. Filter C: FVG size must exceed 0.3x ATR(14).
+  3. Proper dedup: only skips exact-same-FVG duplicates, not all post-BOS candles.
+  4. ATR-based stop: stop = FVG edge +/- 0.5x ATR(14), not a tiny fixed buffer.
+  5. Minimum stop distance filter: rejects setups with stop < 0.2% of price.
+  6. Log dedup guard against race conditions.
 Requires: pip install ccxt pandas numpy
 """
 
@@ -28,13 +19,14 @@ import csv
 import os
 from datetime import datetime, timezone
 
-# ================= CONFIG =================
 SYMBOL = "BTC/USDT"
 TIMEFRAME = "15m"
 RISK_PCT = 0.01
 RR = 2.0
 MAX_WAIT_BARS = 20
-FVG_ATR_MULT = 0.3   # Filter C: FVG size must exceed this multiple of ATR(14)
+FVG_ATR_MULT = 0.3
+STOP_ATR_MULT = 0.5
+MIN_STOP_PCT = 0.2
 
 STATE_FILE = "state.json"
 LOG_FILE = "forward_test_log.csv"
@@ -42,12 +34,11 @@ LOG_FILE = "forward_test_log.csv"
 exchange = ccxt.cryptocom({'enableRateLimit': True})
 
 
-# ================= State load/save =================
 def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, 'r') as f:
             return json.load(f)
-    return dict(balance=100.0, open_positions=[], pending_setups=[], last_processed_time=None)
+    return dict(balance=100.0, open_positions=[], pending_setups=[], last_processed_time=None, recent_fvg_keys=[])
 
 def save_state(state):
     with open(STATE_FILE, 'w') as f:
@@ -59,7 +50,7 @@ def init_log():
             w = csv.writer(f)
             w.writerow(['timestamp','event','direction','price','stop','target','r_result','balance'])
 
-_existing_log_keys = None  # cache of (timestamp, event, direction, price) tuples already in the log
+_existing_log_keys = None
 
 def _load_existing_log_keys():
     global _existing_log_keys
@@ -67,7 +58,7 @@ def _load_existing_log_keys():
     if os.path.exists(LOG_FILE):
         with open(LOG_FILE, 'r', newline='') as f:
             reader = csv.reader(f)
-            next(reader, None)  # skip header
+            next(reader, None)
             for row in reader:
                 if len(row) >= 4:
                     keys.add((row[0], row[1], row[2], row[3]))
@@ -79,19 +70,14 @@ def log_row(candle_time, event, direction='', price='', stop='', target='', r_re
         _load_existing_log_keys()
     key = (str(candle_time), event, direction, str(price))
     if key in _existing_log_keys:
-        # Idempotency guard: this exact event was already logged (e.g. from a
-        # prior run that raced with this one). Skip writing a duplicate.
         print(f"  (skipped duplicate log row: {key})")
         return
     _existing_log_keys.add(key)
     with open(LOG_FILE, 'a', newline='') as f:
         w = csv.writer(f)
-        # Use the CANDLE's timestamp, not "now" -- so catch-up runs record events
-        # at the time they actually happened in the market, not when the bot noticed.
         w.writerow([candle_time, event, direction, price, stop, target, r_result, balance])
 
 
-# ================= Data + indicators (computed once per run, over the whole fetched window) =================
 def fetch_candles(limit=500):
     ohlcv = exchange.fetch_ohlcv(SYMBOL, timeframe=TIMEFRAME, limit=limit)
     df = pd.DataFrame(ohlcv, columns=['ts','open','high','low','close','volume'])
@@ -111,7 +97,6 @@ def compute_indicators(df):
     K = 2
     df['swing_high'] = df['high'] == df['high'].rolling(2*K+1, center=True).max()
     df['swing_low']  = df['low']  == df['low'].rolling(2*K+1, center=True).min()
-    # ATR(14) -- used by Filter C (FVG-size filter)
     tr = pd.concat([
         high - low,
         (high - close.shift(1)).abs(),
@@ -149,18 +134,12 @@ def prev_swing_idx(df, i, kind):
     return None
 
 
-# ================= Per-candle processing (the core fix) =================
 def process_candle(df, i, state):
-    """Run the FULL strategy logic for a single closed candle at index i:
-    1) manage open positions against this candle's high/low
-    2) check pending setups for retrace-triggered entries
-    3) detect a fresh BOS+FVG setup forming at this candle
-    All three happen for every candle in order -- none can be skipped."""
     H, L, C = df['high'].values, df['low'].values, df['close'].values
+    ATR = df['atr'].values
     row = df.iloc[i]
     ct = df['dt'].iloc[i].isoformat()
 
-    # --- 1) position management ---
     still_open = []
     for d in state['open_positions']:
         hit_stop = (L[i] <= d['stop']) if d['direction']=='long' else (H[i] >= d['stop'])
@@ -179,7 +158,6 @@ def process_candle(df, i, state):
             still_open.append(d)
     state['open_positions'] = still_open
 
-    # --- 2) pending setups: check for retrace + Ichimoku confirmation ---
     still_pending = []
     for setup in state['pending_setups']:
         bos_time = pd.Timestamp(setup['bos_time'])
@@ -196,9 +174,9 @@ def process_candle(df, i, state):
             if L[i] <= setup['gtop']:
                 if ichimoku_bullish(row):
                     entry = (setup['gtop']+setup['gbottom'])/2
-                    stop = setup['gbottom']*0.9995
+                    stop = setup['gbottom'] - STOP_ATR_MULT * setup['atr_at_bos']
                     risk = entry-stop
-                    if risk > 0:
+                    if risk > 0 and (risk/entry*100) >= MIN_STOP_PCT:
                         target = entry+risk*RR
                         pos = dict(direction='long', entry=entry, stop=stop, target=target)
                         state['open_positions'].append(pos)
@@ -209,9 +187,9 @@ def process_candle(df, i, state):
             if H[i] >= setup['gbottom']:
                 if ichimoku_bearish(row):
                     entry = (setup['gtop']+setup['gbottom'])/2
-                    stop = setup['gtop']*1.0005
+                    stop = setup['gtop'] + STOP_ATR_MULT * setup['atr_at_bos']
                     risk = stop-entry
-                    if risk > 0:
+                    if risk > 0 and (risk/entry*100) >= MIN_STOP_PCT:
                         target = entry-risk*RR
                         pos = dict(direction='short', entry=entry, stop=stop, target=target)
                         state['open_positions'].append(pos)
@@ -223,54 +201,52 @@ def process_candle(df, i, state):
             still_pending.append(setup)
     state['pending_setups'] = still_pending
 
-    # --- 3) detect a fresh BOS + FVG at this candle ---
     if i < 60:
         return
-    ATR = df['atr'].values
 
-    def already_queued(direction, gtop, gbottom, tol=1e-6):
-        """Dedup guard: same gap (within tolerance) already pending in this direction."""
+    def _fvg_already_seen(direction, gtop, gbottom):
+        key = (direction, round(gtop, 2), round(gbottom, 2))
         for s in state['pending_setups']:
-            if s['direction'] == direction and abs(s['gtop']-gtop) < tol and abs(s['gbottom']-gbottom) < tol:
+            if (s['direction'], round(s['gtop'], 2), round(s['gbottom'], 2)) == key:
+                return True
+        for k in state.get('recent_fvg_keys', []):
+            if tuple(k) == key:
                 return True
         return False
 
+    def _remember_fvg(direction, gtop, gbottom):
+        key = [direction, round(gtop, 2), round(gbottom, 2)]
+        recent = state.setdefault('recent_fvg_keys', [])
+        recent.append(key)
+        if len(recent) > 200:
+            del recent[:len(recent)-200]
+
     psh = prev_swing_idx(df, i, 'high')
-    # Only fire on the actual breakout candle (previous close had NOT yet broken
-    # the swing) -- otherwise, since psh doesn't move until a new opposite swing
-    # forms, C[i] > H[psh] stays true for many subsequent candles and the same
-    # FVG gets re-queued over and over, producing duplicate trades.
-    fresh_break_up = psh is not None and C[i] > H[psh] and not (i > 0 and C[i-1] > H[psh])
-    if fresh_break_up:
+    if psh is not None and C[i] > H[psh]:
         fvg = find_last_fvg(df, max(psh, i-10), i+1, 'bullish')
         if fvg:
             _, gtop, gbottom = fvg
-            # Filter C: only take FVGs that represent a "significant" imbalance
-            # relative to normal market volatility (ATR), not noise-sized gaps.
             if not np.isnan(ATR[i]) and (gtop - gbottom) > FVG_ATR_MULT * ATR[i]:
-                if not already_queued('long', gtop, gbottom):
+                if not _fvg_already_seen('long', gtop, gbottom):
                     state['pending_setups'].append(dict(direction='long', gtop=gtop, gbottom=gbottom,
+                                                         atr_at_bos=float(ATR[i]),
                                                          bos_time=df['dt'].iloc[i].isoformat()))
-                    print(f"[{ct}] New LONG BOS+FVG detected (passed Filter C).")
-                else:
-                    print(f"[{ct}] LONG BOS+FVG matches an already-queued setup -- skipped (dedup).")
-
+                    _remember_fvg('long', gtop, gbottom)
+                    print(f"[{ct}] New LONG BOS+FVG detected (unique, passed Filter C).")
     psl = prev_swing_idx(df, i, 'low')
-    fresh_break_down = psl is not None and C[i] < L[psl] and not (i > 0 and C[i-1] < L[psl])
-    if fresh_break_down:
+    if psl is not None and C[i] < L[psl]:
         fvg = find_last_fvg(df, max(psl, i-10), i+1, 'bearish')
         if fvg:
             _, gtop, gbottom = fvg
             if not np.isnan(ATR[i]) and (gtop - gbottom) > FVG_ATR_MULT * ATR[i]:
-                if not already_queued('short', gtop, gbottom):
+                if not _fvg_already_seen('short', gtop, gbottom):
                     state['pending_setups'].append(dict(direction='short', gtop=gtop, gbottom=gbottom,
+                                                         atr_at_bos=float(ATR[i]),
                                                          bos_time=df['dt'].iloc[i].isoformat()))
-                    print(f"[{ct}] New SHORT BOS+FVG detected (passed Filter C).")
-                else:
-                    print(f"[{ct}] SHORT BOS+FVG matches an already-queued setup -- skipped (dedup).")
+                    _remember_fvg('short', gtop, gbottom)
+                    print(f"[{ct}] New SHORT BOS+FVG detected (unique, passed Filter C).")
 
 
-# ================= Main (single run, catches up on ALL missed candles) =================
 def main():
     init_log()
     state = load_state()
@@ -279,20 +255,19 @@ def main():
           f"{len(state['open_positions'])} open, {len(state['pending_setups'])} pending, "
           f"last_processed_time={state.get('last_processed_time')}")
 
-    df = fetch_candles(limit=500)  # 500 candles = ~5.2 days of 15m history, plenty of buffer
+    df = fetch_candles(limit=500)
     df = compute_indicators(df)
     N = len(df)
 
     last_processed_time = state.get('last_processed_time')
     if last_processed_time is None:
-        start_idx = 60  # first run: need enough history for swings/Ichimoku, don't replay everything
+        start_idx = 60
     else:
         last_ts = pd.Timestamp(last_processed_time)
         mask = df['dt'] > last_ts
         start_idx = mask.idxmax() if mask.any() else N - 1
 
-    end_idx = N - 1  # never process the still-forming last candle
-
+    end_idx = N - 1
     n_new = max(0, end_idx - start_idx)
     print(f"Processing {n_new} new closed candle(s) (index {start_idx} to {end_idx-1})...")
 
