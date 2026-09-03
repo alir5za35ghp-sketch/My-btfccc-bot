@@ -4,20 +4,20 @@
   "pending_setups": [
     {
       "direction": "long",
-      "gtop": 79592.05,
-      "gbottom": 79017.8,
-      "atr_at_bos": 289.10393644057626,
-      "bos_time": "2026-09-03T14:30:00+00:00"
-    },
-    {
-      "direction": "long",
       "gtop": 80352.16,
       "gbottom": 79899.98,
       "atr_at_bos": 347.62579217815914,
       "bos_time": "2026-09-03T15:00:00+00:00"
+    },
+    {
+      "direction": "long",
+      "gtop": 81172.89,
+      "gbottom": 81058.98,
+      "atr_at_bos": 329.94336209580894,
+      "bos_time": "2026-09-03T19:45:00+00:00"
     }
   ],
-  "last_processed_time": "2026-09-03T19:30:00+00:00",
+  "last_processed_time": "2026-09-03T19:45:00+00:00",
   "recent_fvg_keys": [
     [
       "short",
@@ -198,6 +198,11 @@
       "long",
       80352.16,
       79899.98
+    ],
+    [
+      "long",
+      81172.89,
+      81058.98
     ]
   ]
 }
