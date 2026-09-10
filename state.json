@@ -8,16 +8,8 @@
       "target": 76700.74468643803
     }
   ],
-  "pending_setups": [
-    {
-      "direction": "short",
-      "gtop": 77982.43,
-      "gbottom": 77893.99,
-      "atr_at_bos": 214.6749530746613,
-      "bos_time": "2026-09-10T12:30:00+00:00"
-    }
-  ],
-  "last_processed_time": "2026-09-10T17:30:00+00:00",
+  "pending_setups": [],
+  "last_processed_time": "2026-09-10T17:45:00+00:00",
   "recent_fvg_keys": [
     [
       "short",
