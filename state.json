@@ -1,16 +1,8 @@
 {
   "balance": 113.61824581690928,
   "open_positions": [],
-  "pending_setups": [
-    {
-      "direction": "long",
-      "gtop": 77275.29,
-      "gbottom": 77178.0,
-      "atr_at_bos": 234.02582490732175,
-      "bos_time": "2026-09-14T02:15:00+00:00"
-    }
-  ],
-  "last_processed_time": "2026-09-14T07:15:00+00:00",
+  "pending_setups": [],
+  "last_processed_time": "2026-09-14T07:30:00+00:00",
   "recent_fvg_keys": [
     [
       "short",
