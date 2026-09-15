@@ -4,20 +4,13 @@
   "pending_setups": [
     {
       "direction": "short",
-      "gtop": 79084.01,
-      "gbottom": 78993.68,
-      "atr_at_bos": 240.65412061622402,
-      "bos_time": "2026-09-14T22:15:00+00:00"
-    },
-    {
-      "direction": "short",
       "gtop": 78546.61,
       "gbottom": 78474.31,
       "atr_at_bos": 218.5482246890772,
       "bos_time": "2026-09-14T23:15:00+00:00"
     }
   ],
-  "last_processed_time": "2026-09-15T03:15:00+00:00",
+  "last_processed_time": "2026-09-15T03:30:00+00:00",
   "recent_fvg_keys": [
     [
       "short",
