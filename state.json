@@ -15,16 +15,9 @@
       "gbottom": 77311.56,
       "atr_at_bos": 170.74105896084484,
       "bos_time": "2026-09-15T07:00:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 77175.0,
-      "gbottom": 77092.87,
-      "atr_at_bos": 178.23316929387533,
-      "bos_time": "2026-09-15T07:45:00+00:00"
     }
   ],
-  "last_processed_time": "2026-09-15T10:30:00+00:00",
+  "last_processed_time": "2026-09-15T10:45:00+00:00",
   "recent_fvg_keys": [
     [
       "short",
