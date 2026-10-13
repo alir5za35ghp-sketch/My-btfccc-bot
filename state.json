@@ -1,29 +1,17 @@
 {
-  "balance": 138.2113548026297,
+  "balance": 136.8292412546034,
   "open_positions": [],
   "pending_setups": [
     {
-      "direction": "short",
-      "gtop": 82889.51,
-      "gbottom": 82749.77,
-      "atr_at_bos": 216.90317113862434,
-      "bos_time": "2026-10-12T22:45:00+00:00"
-    },
-    {
-      "direction": "short",
-      "gtop": 82471.77,
-      "gbottom": 82270.59,
-      "atr_at_bos": 235.5922303430085,
-      "bos_time": "2026-10-12T23:00:00+00:00"
+      "direction": "long",
+      "gtop": 83183.01,
+      "gbottom": 82973.93,
+      "atr_at_bos": 272.48698742455485,
+      "bos_time": "2026-10-13T05:00:00+00:00"
     }
   ],
-  "last_processed_time": "2026-10-13T01:15:00+00:00",
+  "last_processed_time": "2026-10-13T08:00:00+00:00",
   "recent_fvg_keys": [
-    [
-      "short",
-      77143.49,
-      77070.67
-    ],
     [
       "short",
       77000.87,
@@ -1018,6 +1006,11 @@
       "short",
       81742.99,
       81625.06
+    ],
+    [
+      "long",
+      83183.01,
+      82973.93
     ]
   ]
 }
