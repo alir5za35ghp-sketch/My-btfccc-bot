@@ -2,13 +2,8 @@
   "balance": 158.71409147026455,
   "open_positions": [],
   "pending_setups": [],
-  "last_processed_time": "2026-10-22T20:15:00+00:00",
+  "last_processed_time": "2026-10-22T23:15:00+00:00",
   "recent_fvg_keys": [
-    [
-      "short",
-      81277.3,
-      81187.11
-    ],
     [
       "long",
       81325.41,
@@ -1003,6 +998,11 @@
       "short",
       81578.9,
       81430.4
+    ],
+    [
+      "long",
+      81454.11,
+      81306.9
     ]
   ]
 }
