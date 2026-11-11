@@ -1,14 +1,16 @@
 {
   "balance": 169.67421816971515,
-  "open_positions": [],
+  "open_positions": [
+    {
+      "direction": "long",
+      "entry": 73752.56,
+      "stop": 73562.36586841174,
+      "target": 74132.94826317651
+    }
+  ],
   "pending_setups": [],
-  "last_processed_time": "2026-11-11T01:45:00+00:00",
+  "last_processed_time": "2026-11-11T09:00:00+00:00",
   "recent_fvg_keys": [
-    [
-      "long",
-      82879.39,
-      82836.99
-    ],
     [
       "short",
       83094.04,
@@ -1003,6 +1005,11 @@
       "long",
       73718.9,
       73562.35
+    ],
+    [
+      "long",
+      73843.16,
+      73661.96
     ]
   ]
 }
